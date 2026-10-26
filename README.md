@@ -54,9 +54,40 @@ O aplicativo combina um dashboard operacional ágil estilo Uber com uma carteira
   * **Dívidas Mensais:** Custos fixos recorrentes (ex: parcela do veículo, seguro, planos).
   * **Dívidas Imprevistas:** Gastos extraordinários com configuração de frequência (diária, mensal ou anual/única).
 
-### 3. Persistência Offline-First & Nuvem
-* 📱 **AsyncStorage Nativo:** Todos os lançamentos de ganhos, metas e dívidas ficam gravados na memória do celular. Puxar para baixo (*pull-to-refresh*) ou reiniciar o app mantém todos os dados 100% intactos.
-* ☁️ **Sincronização em Segundo Plano com Supabase:** Conexão com banco de dados PostgreSQL.
+### 3. Login, Cadastro e Sincronização na Nuvem 🔐
+* 👤 **Conta por e-mail e senha (Supabase Auth):** cadastro com nome, login, recuperação de senha e sessão persistida no aparelho.
+* ☁️ **Sincronização bidirecional (last-write-wins):** ganhos, dívidas e meta diária são mesclados entre aparelho e nuvem usando o horário da última alteração. Exclusões também sincronizam (soft delete).
+* 🔒 **Dados isolados por usuário:** todas as tabelas usam Row Level Security, então cada pessoa só enxerga e altera o que é dela.
+* 📱 **Offline-First:** tudo é salvo primeiro no AsyncStorage. Sem internet, o app segue funcionando e sincroniza sozinho quando a conexão volta. Também é possível usar sem conta (somente local).
+
+---
+
+### 4. Interface Minimalista com Design Tokens 🎨
+* **Primeira página só com o essencial:** total da semana em destaque, meta e dias cobertos, gráfico de 7 barras e o card do dia selecionado com um único botão "Lançar ganho".
+* **Lançamento em um toque:** o botão "+" abre direto o lançamento; o OCR do print fica como ação secundária dentro do mesmo painel.
+* **Conta em um painel inferior:** e-mail, estado da nuvem, meta diária, "Sincronizar agora" e "Sair da conta" substituem o menu lateral.
+* **Design tokens em `src/theme.ts`:** cores, espaçamentos, raios, tipografia e superfícies em um só lugar; nenhum literal de estilo fica nas telas (um teste garante isso), então mudar o visual é editar um arquivo.
+* **Acessível:** alvos de toque de 44 pt, papéis e estados de acessibilidade em botões, abas, gráfico e barra de progresso.
+
+## ⚙️ Configurar o Supabase (obrigatório para o modo online)
+
+Sem esta etapa o app funciona apenas no modo local: a sincronização mostrará **"Banco não configurado"**.
+
+1. **Crie um projeto** em [supabase.com/dashboard](https://supabase.com/dashboard) (plano gratuito basta).
+2. **Crie as tabelas:** abra **SQL Editor → New query**, cole o conteúdo de [`supabase/schema.sql`](supabase/schema.sql) e clique em **Run**. O script é idempotente e cria as tabelas `perfis`, `ganhos`, `dividas` e `configuracoes`, as policies de RLS e o trigger que cria o perfil no cadastro.
+3. **Habilite o login por e-mail:** em **Authentication → Providers → Email**, deixe o provedor ativado.
+   * Para testar sem precisar abrir o e-mail, desligue **"Confirm email"**. Em produção, mantenha ligado.
+4. **Copie as credenciais:** em **Project Settings → API**, copie a **Project URL** e a **Publishable key** (`sb_publishable_...`).
+5. **Crie o arquivo `.env`** na raiz do projeto a partir do `.env.example`:
+
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_XXXXXXXX
+```
+
+6. Reinicie o Expo com cache limpo (`npx expo start -c`) para as variáveis serem lidas.
+
+> **Como o sync funciona:** `src/services/storage.ts` grava localmente e chama `agendarSync()`; `src/services/sync.ts` compara `atualizadoEm` de cada registro com a nuvem (`src/services/supabase.ts`) e envia/recebe apenas o que estiver mais novo. A autenticação fica em `src/services/auth.ts`.
 
 ---
 
@@ -65,10 +96,37 @@ O aplicativo combina um dashboard operacional ágil estilo Uber com uma carteira
 * **Front-end Mobile:** [React Native](https://reactnative.dev/docs/getting-started) com [Expo SDK 58](https://docs.expo.dev/)
 * **Linguagem:** [TypeScript](https://www.typescriptlang.org/)
 * **Armazenamento Local:** [AsyncStorage](https://react-native-async-storage.github.io/async-storage/)
-* **Backend & Banco de Dados:** [Supabase Client](https://supabase.com/docs/reference/javascript/initializing) (PostgreSQL)
+* **Autenticação:** [Supabase Auth](https://supabase.com/docs/guides/auth) (e-mail e senha)
+* **Backend & Banco de Dados:** [Supabase Client](https://supabase.com/docs/reference/javascript/initializing) (PostgreSQL com Row Level Security)
 * **Motor de OCR Local:** [Google ML Kit Text Recognition v2](https://developers.google.com/ml-kit/vision/text-recognition/v2)
 
 ---
+* **Testes:** [Jest](https://jestjs.io/) com [jest-expo](https://docs.expo.dev/develop/unit-testing/) e [Testing Library](https://callstack.github.io/react-native-testing-library/)
+
+## 🧪 Testes
+
+Cada função de `src/utils`, `src/services`, `src/hooks`, dos componentes e das telas tem testes próprios em `__tests__/`,
+escritos com [Jest](https://jestjs.io/) (preset [jest-expo](https://docs.expo.dev/develop/unit-testing/)) e
+[Testing Library](https://callstack.github.io/react-native-testing-library/). O AsyncStorage usa o
+[mock oficial](https://react-native-async-storage.github.io/async-storage/docs/advanced/jest/) e o Supabase é simulado,
+então a suíte roda offline.
+
+```powershell
+# Rodar todos os testes
+npm test
+
+# Modo observação (reexecuta ao salvar)
+npm run test:watch
+
+# Checagem de tipos
+npm run typecheck
+```
+
+| Pasta | O que cobre |
+|---|---|
+| `__tests__/utils` | datas, motor de amortização em cascata, dívidas e formatação monetária |
+| `__tests__/services` | autenticação, sincronização bidirecional, armazenamento local, cliente Supabase e OCR |
+| `__tests__/ui` | componentes, hooks, telas e o fluxo de login/sem conta do App |
 
 ## 🚀 Como Executar o Projeto
 
@@ -80,7 +138,10 @@ cd Projeto-Amortiza
 # 2. Instalar dependências
 npm install --legacy-peer-deps
 
-# 3. Iniciar o servidor Expo com cache limpo
+# 3. (Opcional) Configurar a nuvem: copie .env.example para .env e preencha
+#    Veja a seção "Configurar o Supabase" acima
+
+# 4. Iniciar o servidor Expo com cache limpo
 npx expo start -c
 ```
 
